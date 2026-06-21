@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>集装箱装载模拟器</title>
+    <meta name="theme-color" content="#0f7c83" />
+    <meta name="description" content="3D 集装箱装载模拟器，支持 20 尺柜、40 尺柜和多种箱型装载方案。" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/app-icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/app-icon.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="control-panel" aria-label="装载控制面板">
+        <div class="brand-block">
+          <span class="eyebrow">Container Loading Studio</span>
+          <h1>集装箱装载模拟器</h1>
+          <p>按实际干柜内部尺寸搭建，添加箱型后可拖动、旋转、调整高度并实时查看空间占用。</p>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-title">
+            <span>柜型</span>
+            <small id="containerVolume">-- cbm</small>
+          </div>
+          <div class="segmented" role="tablist" aria-label="选择集装箱">
+            <button class="segment active" data-container="20gp" type="button">20 尺柜</button>
+            <button class="segment" data-container="40gp" type="button">40 尺柜</button>
+          </div>
+          <div class="dimension-grid">
+            <label>
+              长
+              <input id="containerLength" type="number" min="1" step="1" />
+            </label>
+            <label>
+              宽
+              <input id="containerWidth" type="number" min="1" step="1" />
+            </label>
+            <label>
+              高
+              <input id="containerHeight" type="number" min="1" step="1" />
+            </label>
+          </div>
+          <p class="source-note">
+            默认尺寸参考
+            <a href="https://www.hapag-lloyd.com/en/services-information/cargo-fleet/container/20-standard.html" target="_blank" rel="noreferrer">Hapag-Lloyd 20' Standard</a>
+            和
+            <a href="https://www.hapag-lloyd.com/en/services-information/cargo-fleet/container/40-standard.html" target="_blank" rel="noreferrer">40' Standard</a>
+            内部尺寸；实际柜况会因厂家和批次略有差异。
+          </p>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-title">
+            <span>小物件</span>
+            <small>单位 mm</small>
+          </div>
+          <div id="boxCatalog" class="catalog" aria-label="箱型列表"></div>
+          <div class="add-row">
+            <label>
+              数量
+              <input id="addQuantity" type="number" min="1" max="999" step="1" value="1" />
+            </label>
+            <button id="addBox" class="primary-action" type="button">添加选中箱子</button>
+          </div>
+          <div class="tool-row compact-tools">
+            <button id="autoFillBox" type="button">应用选中方案</button>
+            <button id="clearLoad" type="button">清空装载</button>
+          </div>
+        </div>
+
+        <div class="panel-section plan-section">
+          <div class="section-title">
+            <span>装箱方案</span>
+            <small id="planSummary">自动计算</small>
+          </div>
+          <div id="packingPlans" class="plan-list" aria-label="装箱方案列表"></div>
+          <p id="planDetail" class="source-note">选择箱型后自动计算不同摆放方式。</p>
+        </div>
+
+        <div class="panel-section load-readout">
+          <div class="section-title">
+            <span>装载直观图</span>
+            <small id="loadHint">空柜</small>
+          </div>
+          <div class="fill-meter">
+            <div class="fill-meter-head">
+              <span>空间占用</span>
+              <strong id="meterPercent">0.00%</strong>
+            </div>
+            <div class="meter-track"><span id="meterFill"></span></div>
+          </div>
+          <div class="map-grid">
+            <div class="map-legend">
+              <span><i class="legend-base"></i>主层</span>
+              <span><i class="legend-top"></i>顶部补层</span>
+            </div>
+            <div class="load-map">
+              <div class="map-title">俯视装载</div>
+              <canvas id="topMap" width="1400" height="720"></canvas>
+            </div>
+            <div class="load-map">
+              <div class="map-title">侧面高度</div>
+              <canvas id="sideMap" width="1400" height="540"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <p id="statusLine" class="status-line">选择箱型和方案后，可直接在 3D 区域查看摆放效果。</p>
+      </section>
+
+      <section class="stage-panel" aria-label="3D 集装箱预览">
+        <div class="top-bar">
+          <div>
+            <span class="eyebrow">Live 3D Preview</span>
+            <h2 id="sceneTitle">20 尺标准干柜</h2>
+          </div>
+          <div class="stats">
+            <div>
+              <strong id="usedPercent">0.00%</strong>
+              <span>体积占用</span>
+            </div>
+            <div>
+              <strong id="itemCount">0</strong>
+              <span>物件数量</span>
+            </div>
+            <div>
+              <strong id="freeVolume">--</strong>
+              <span>剩余体积</span>
+            </div>
+          </div>
+        </div>
+        <div id="sceneMount" class="scene-mount"></div>
+        <div class="bottom-strip">
+          <div class="view-actions" aria-label="视角控制">
+            <button data-view="inside" type="button">内部</button>
+            <button data-view="top" type="button">俯视</button>
+            <button data-view="side" type="button">侧视</button>
+            <button data-view="door" type="button">门口</button>
+            <button id="rotateBox" type="button">旋转</button>
+            <button id="deleteBox" type="button">删除</button>
+          </div>
+          <span>鼠标拖动箱子；双击旋转；Delete 删除；空白处旋转视角</span>
+        </div>
+      </section>
+    </main>
+
+    <script src="./vendor/three.min.js"></script>
+    <script src="./vendor/OrbitControls.global.js"></script>
+    <script src="./app.js"></script>
+    <script>
+      if ("serviceWorker" in navigator && location.protocol !== "file:") {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("./sw.js");
+        });
+      }
+    </script>
+  </body>
+</html>

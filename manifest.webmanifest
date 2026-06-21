@@ -1,0 +1,19 @@
+{
+  "name": "集装箱装载模拟器",
+  "short_name": "装柜模拟",
+  "description": "3D 集装箱装载模拟器，支持 20 尺柜、40 尺柜和多种箱型装载方案。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#f4f5f2",
+  "theme_color": "#0f7c83",
+  "icons": [
+    {
+      "src": "./icons/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
