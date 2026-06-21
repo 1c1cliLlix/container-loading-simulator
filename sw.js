@@ -1,13 +1,13 @@
-const CACHE_NAME = "container-loading-studio-v1";
+const CACHE_NAME = "container-loading-studio-v2";
 const APP_ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
   "./manifest.webmanifest",
-  "./icons/app-icon.svg",
-  "./vendor/three.min.js",
-  "./vendor/OrbitControls.global.js"
+  "./app-icon.svg",
+  "./three.min.js",
+  "./OrbitControls.global.js"
 ];
 
 self.addEventListener("install", (event) => {
