@@ -1,4 +1,5 @@
-const OrbitControls = THREE.OrbitControls;
+const hasThree = typeof THREE !== "undefined";
+const OrbitControls = hasThree ? THREE.OrbitControls : null;
 
 const containers = {
   "20gp": {
@@ -74,42 +75,30 @@ const els = {
   deleteBox: document.querySelector("#deleteBox"),
 };
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color("#dfe5e1");
-scene.fog = new THREE.Fog("#dfe5e1", 7, 20);
-
-const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 80);
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-els.mount.appendChild(renderer.domElement);
-
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.06;
-controls.maxPolarAngle = Math.PI * 0.49;
-controls.minDistance = 3.5;
-controls.maxDistance = 20;
-
-const world = new THREE.Group();
-const itemGroup = new THREE.Group();
-const bulkGroup = new THREE.Group();
-scene.add(world, itemGroup, bulkGroup);
-
-const raycaster = new THREE.Raycaster();
-const pointer = new THREE.Vector2();
-const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-const hitPoint = new THREE.Vector3();
+let scene = null;
+let camera = null;
+let renderer = null;
+let controls = null;
+let world = null;
+let itemGroup = null;
+let bulkGroup = null;
+let raycaster = null;
+let pointer = null;
+let floorPlane = null;
+let hitPoint = null;
 let containerGroup = null;
 let floorMesh = null;
+let threeReady = false;
+let animationStarted = false;
 
-initLights();
 buildCatalog();
 bindUi();
+initThreePreview();
 applyContainer("20gp");
-resize();
-animate();
+if (threeReady) {
+  resize();
+  animate();
+}
 
 function mm(value) {
   return value / 1000;
@@ -131,6 +120,59 @@ function getDims(item) {
     y: item.base[keys[1]],
     z: item.base[keys[2]],
   };
+}
+
+function initThreePreview() {
+  if (!hasThree || !OrbitControls) {
+    showThreeFallback("当前浏览器没有完整加载 3D 引擎，装箱数据和装载直观图仍可正常使用。");
+    return;
+  }
+
+  try {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color("#dfe5e1");
+    scene.fog = new THREE.Fog("#dfe5e1", 7, 20);
+
+    camera = new THREE.PerspectiveCamera(42, 1, 0.01, 80);
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    els.mount.appendChild(renderer.domElement);
+
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.maxPolarAngle = Math.PI * 0.49;
+    controls.minDistance = 3.5;
+    controls.maxDistance = 20;
+
+    world = new THREE.Group();
+    itemGroup = new THREE.Group();
+    bulkGroup = new THREE.Group();
+    scene.add(world, itemGroup, bulkGroup);
+
+    raycaster = new THREE.Raycaster();
+    pointer = new THREE.Vector2();
+    floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    hitPoint = new THREE.Vector3();
+    threeReady = true;
+    initLights();
+    bindThreeUi();
+  } catch (error) {
+    console.warn("3D preview unavailable:", error);
+    threeReady = false;
+    showThreeFallback("当前浏览器无法启动 3D 预览，装箱方案和装载直观图仍可正常使用。");
+  }
+}
+
+function showThreeFallback(message) {
+  els.mount.innerHTML = `<div class="scene-fallback">${message}</div>`;
+  els.rotateBox.disabled = true;
+  els.deleteBox.disabled = true;
+  document.querySelectorAll("[data-view]").forEach((button) => {
+    button.disabled = true;
+  });
 }
 
 function initLights() {
@@ -361,9 +403,6 @@ function bindUi() {
   els.addBox.addEventListener("click", addSelectedBoxes);
   els.autoFillBox.addEventListener("click", autoFillSelectedBox);
   els.clearLoad.addEventListener("click", clearLoad);
-  els.rotateBox.addEventListener("click", rotateSelected);
-  els.deleteBox.addEventListener("click", deleteSelected);
-
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => setView(button.dataset.view));
   });
@@ -374,11 +413,16 @@ function bindUi() {
       state.container.width = Number(els.containerWidth.value);
       state.container.height = Number(els.containerHeight.value);
       rebuildContainer();
+      if (threeReady) fitCamera();
       buildPackingPlans();
       validateAndRender();
     });
   });
+}
 
+function bindThreeUi() {
+  els.rotateBox.addEventListener("click", rotateSelected);
+  els.deleteBox.addEventListener("click", deleteSelected);
   renderer.domElement.addEventListener("pointerdown", onPointerDown);
   renderer.domElement.addEventListener("pointermove", onPointerMove);
   renderer.domElement.addEventListener("dblclick", rotateSelected);
@@ -394,17 +438,25 @@ function applyContainer(key) {
     button.classList.toggle("active", button.dataset.container === key);
   });
   rebuildContainer();
-  fitCamera();
+  if (threeReady) fitCamera();
   buildPackingPlans();
   validateAndRender();
 }
 
 function rebuildContainer() {
+  const c = state.container;
+  els.containerLength.value = c.length;
+  els.containerWidth.value = c.width;
+  els.containerHeight.value = c.height;
+  els.sceneTitle.textContent = containers[state.containerKey]?.name ?? "自定义集装箱";
+  els.containerVolume.textContent = `${cbm(getContainerVolume())} cbm`;
+
+  if (!threeReady) return;
+
   if (containerGroup) {
     world.remove(containerGroup);
   }
 
-  const c = state.container;
   containerGroup = new THREE.Group();
   const L = mm(c.length);
   const W = mm(c.width);
@@ -447,11 +499,6 @@ function rebuildContainer() {
   addRail(containerGroup, 0.08, H, 0.08, L / 2, H / 2, W / 2, railMaterial);
 
   world.add(containerGroup);
-  els.containerLength.value = c.length;
-  els.containerWidth.value = c.width;
-  els.containerHeight.value = c.height;
-  els.sceneTitle.textContent = containers[state.containerKey]?.name ?? "自定义集装箱";
-  els.containerVolume.textContent = `${cbm(getContainerVolume())} cbm`;
 }
 
 function addWall(group, a, h, t, x, y, z, material, side) {
@@ -614,7 +661,9 @@ function autoFillSelectedBox() {
   const plan = getSelectedPlan();
   if (!box || !plan) return;
   clearLoad(false);
-  const meshes = plan.segments.flatMap((segment, segmentIndex) => createBulkSegmentMesh(box, segment, segmentIndex));
+  const meshes = threeReady
+    ? plan.segments.flatMap((segment, segmentIndex) => createBulkSegmentMesh(box, segment, segmentIndex))
+    : [];
   state.bulkLoad = {
     meshes,
     base: box,
@@ -625,7 +674,7 @@ function autoFillSelectedBox() {
     segments: plan.segments,
   };
   state.selectedItemId = null;
-  setView("door");
+  if (threeReady) setView("door");
   validateAndRender();
 }
 
@@ -680,7 +729,9 @@ function createBulkSegmentMesh(box, segment, segmentIndex) {
 }
 
 function clearLoad(shouldRender = true) {
-  state.items.forEach((item) => itemGroup.remove(item.mesh));
+  state.items.forEach((item) => {
+    if (threeReady && item.mesh && itemGroup) itemGroup.remove(item.mesh);
+  });
   state.items = [];
   state.selectedItemId = null;
   removeBulkLoad();
@@ -690,7 +741,7 @@ function clearLoad(shouldRender = true) {
 function removeBulkLoad() {
   if (!state.bulkLoad) return;
   state.bulkLoad.meshes.forEach((mesh) => {
-    bulkGroup.remove(mesh);
+    if (bulkGroup) bulkGroup.remove(mesh);
     mesh.geometry.dispose();
     mesh.material.dispose();
   });
@@ -711,7 +762,7 @@ function addBox(sourceItem, position, shouldSelect = true) {
     invalid: false,
   };
   state.items.push(item);
-  createItemMesh(item);
+  if (threeReady) createItemMesh(item);
   if (shouldSelect) {
     selectItem(id);
     validateAndRender();
@@ -805,6 +856,7 @@ function syncMesh(item) {
 }
 
 function rotateSelected() {
+  if (!threeReady) return;
   const item = getSelectedItem();
   if (!item) return;
   item.orientation = (item.orientation + 1) % orientations.length;
@@ -816,7 +868,7 @@ function rotateSelected() {
 function deleteSelected() {
   const item = getSelectedItem();
   if (!item) return;
-  itemGroup.remove(item.mesh);
+  if (threeReady && item.mesh && itemGroup) itemGroup.remove(item.mesh);
   state.items = state.items.filter((candidate) => candidate.id !== item.id);
   state.selectedItemId = state.items.at(-1)?.id ?? null;
   validateAndRender();
@@ -846,7 +898,7 @@ function selectItem(id) {
 function validateAndRender() {
   state.items.forEach((item) => {
     item.invalid = isOutOfBounds(item) || state.items.some((other) => other.id !== item.id && intersects(item, other));
-    syncMesh(item);
+    if (threeReady) syncMesh(item);
   });
   updateStats();
 }
@@ -1429,6 +1481,7 @@ function updatePointer(event) {
 }
 
 function fitCamera() {
+  if (!threeReady) return;
   const c = state.container;
   const L = mm(c.length);
   const W = mm(c.width);
@@ -1439,6 +1492,7 @@ function fitCamera() {
 }
 
 function setView(view) {
+  if (!threeReady) return;
   const c = state.container;
   const L = mm(c.length);
   const W = mm(c.width);
@@ -1460,6 +1514,7 @@ function setView(view) {
 }
 
 function resize() {
+  if (!threeReady) return;
   const rect = els.mount.getBoundingClientRect();
   const width = Math.max(320, rect.width);
   const height = Math.max(420, rect.height);
@@ -1469,7 +1524,14 @@ function resize() {
 }
 
 function animate() {
-  requestAnimationFrame(animate);
+  if (!threeReady || animationStarted) return;
+  animationStarted = true;
+  renderFrame();
+}
+
+function renderFrame() {
+  if (!threeReady) return;
+  requestAnimationFrame(renderFrame);
   controls.update();
   renderer.render(scene, camera);
 }
